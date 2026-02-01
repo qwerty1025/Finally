@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>羊奶訂單管理系統 CRM-Lite</title>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB6D9vh6J2mdnjz2VXEVe99oi7oLF-irFo",
+            authDomain: "crm-ts-1225-001.firebaseapp.com",
+            databaseURL: "https://crm-ts-1225-001-default-rtdb.firebaseio.com",
+            projectId: "crm-ts-1225-001",
+            storageBucket: "crm-ts-1225-001.firebasestorage.app",
+            messagingSenderId: "925760221722",
+            appId: "1:925760221722:web:1aeda0b82f1f16b8dcd7a3"
+        };
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        window.db = db; // 掛載到 window 以便主邏輯存取
+        window.dbRef = ref;
+        window.dbSet = set;
+        window.dbGet = get;
+        window.dbChild = child;
+    </script>
+
+    <style>
+        :root {
+            --primary: #007AFF; /* iOS Blue */
+            --success: #34C759;
+            --warning: #FF9500;
+            --danger: #FF3B30;
+            --bg: #F2F2F7;
+            --card-bg: #FFFFFF;
+            --text-main: #1C1C1E;
+            --text-sub: #8E8E93;
+            --border: #C6C6C8;
+            --radius: 12px;
+            --spacing: 8px;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding-top: 110px; /* 保留 Header 空間 */
+            font-size: 14px; /* 高密度字體 */
+        }
+
+        /* --- Header & Navbar --- */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            border-bottom: 1px solid var(--border);
+            padding: var(--spacing);
+            box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+        }
+
+        .nav-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .nav-stats {
+            display: flex;
+            gap: 10px;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            white-space: nowrap;
+            padding-bottom: 2px;
+        }
+
+        .stat-badge {
+            background: #E5E5EA;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+        
+        .stat-badge span { color: var(--primary); }
+
+        .milk-calc-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #eef9ff;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            justify-content: space-between;
+        }
+
+        .milk-input {
+            width: 70px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 5px;
+            text-align: right;
+        }
+
+        /* --- Hamburger / Sidebar --- */
+        .menu-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0 5px;
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: -280px;
+            width: 280px;
+            height: 100vh;
+            background: var(--card-bg);
+            z-index: 200;
+            transition: 0.3s ease;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .sidebar.open { left: 0; }
+        .sidebar-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 150;
+            display: none;
+        }
+        .sidebar-overlay.active { display: block; }
+
+        /* --- Main Content --- */
+        .container {
+            padding: var(--spacing);
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Grid Layout: Mobile 1 col, Desktop 3 cols */
+        .order-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+        }
+
+        @media (min-width: 768px) {
+            .order-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        /* --- Order Card (High Density) --- */
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-left: 4px solid var(--primary); /* Default status color */
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .customer-name { font-weight: 700; font-size: 1.1rem; }
+        .uuid { font-family: monospace; color: var(--text-sub); font-size: 0.75rem; }
+
+        .items-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .item-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .item-label { font-size: 0.7rem; color: var(--text-sub); }
+        .item-val { font-weight: 700; font-size: 1.1rem; }
+
+        /* --- Progress Bar / Status --- */
+        .status-container {
+            display: flex;
+            justify-content: space-between;
+            background: #F2F2F7;
+            border-radius: 6px;
+            padding: 2px;
+            margin-top: 5px;
+        }
+
+        .status-btn {
+            flex: 1;
+            border: none;
+            background: none;
+            font-size: 0.7rem;
+            padding: 4px 0;
+            border-radius: 4px;
+            color: var(--text-sub);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .status-btn.active {
+            background: white;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            font-weight: bold;
+        }
+
+        /* Status Colors Logic */
+        .card[data-status="0"] { border-left-color: var(--primary); } /* 預計 */
+        .card[data-status="0"] .status-btn:nth-child(1) { color: var(--primary); font-weight: bold; }
+        
+        .card[data-status="1"] { border-left-color: var(--warning); } /* 延期 */
+        .card[data-status="1"] .status-btn:nth-child(2) { color: var(--warning); font-weight: bold; }
+
+        .card[data-status="2"] { border-left-color: var(--text-sub); opacity: 0.9; } /* 減量 */
+        .card[data-status="2"] .status-btn:nth-child(3) { color: var(--text-main); font-weight: bold; }
+
+        .card[data-status="3"] { border-left-color: var(--success); background: #fafffb; } /* 確認 */
+        .card[data-status="3"] .status-btn:nth-child(4) { color: var(--success); font-weight: bold; }
+
+        /* --- Modal --- */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 300;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .modal h3 { margin-top: 0; }
+        .btn-block {
+            width: 100%;
+            padding: 12px;
+            margin-top: 10px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+
+        /* Helpers */
+        .hidden { display: none; }
+        input[type="date"] { padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; font-size: 1rem; margin-bottom: 10px; }
+        
+        /* 產品表格樣式 */
+        .product-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 10px; }
+        .product-table th, .product-table td { border: 1px solid #eee; padding: 5px; text-align: left; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="nav-top">
+            <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+            <div style="font-weight:bold; font-size: 1.1rem;">訂單看板 <span id="displayDate" style="font-size:0.8rem; color:#666;"></span></div>
+            <button class="btn-outline" style="padding:4px 8px; font-size:0.8rem;" onclick="saveToFirebase()">雲端存檔</button>
+        </div>
+
+        <div class="nav-stats">
+            <div class="stat-badge">大: <span id="sum-large">0</span></div>
+            <div class="stat-badge">金中: <span id="sum-gold">0</span></div>
+            <div class="stat-badge">中: <span id="sum-mid">0</span></div>
+            <div class="stat-badge">訂單數: <span id="order-count">0</span></div>
+        </div>
+
+        <div class="milk-calc-row">
+            <div>
+                預估需求: <span id="milk-needed" style="font-weight:bold;">0</span> kg
+            </div>
+            <div style="display:flex; align-items:center; gap:5px;">
+                <label>實際產量:</label>
+                <input type="number" id="milk-harvest" class="milk-input" placeholder="kg" oninput="calculateMilk()">
+                <span id="milk-diff" style="font-size:0.8rem;"></span>
+            </div>
+        </div>
+    </header>
+
+    <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <div class="sidebar" id="sidebar">
+        <h3>產品資料表</h3>
+        <p style="font-size:0.8rem; color:#666;">用於分析CSV對應內容 (唯讀)</p>
+        <table class="product-table">
+            <thead><tr><th>品項</th><th>代號</th><th>規格</th></tr></thead>
+            <tbody>
+                <tr><td>大瓶羊奶</td><td>Large</td><td>950g</td></tr>
+                <tr><td>金中羊奶</td><td>GoldMid</td><td>500g</td></tr>
+                <tr><td>中瓶羊奶</td><td>Mid</td><td>500g</td></tr>
+                <tr><td>特製</td><td>Special</td><td>N/A</td></tr>
+            </tbody>
+        </table>
+        
+        <hr>
+        <h3>資料來源</h3>
+        <input type="text" id="csvUrl" style="width:100%; padding:8px; font-size:0.8rem; margin-bottom:10px;" 
+               value="https://docs.google.com/spreadsheets/d/e/2PACX-1vQF9dZUNtfJjbPIf4_3wvrJoVIv7WxGrXKEit9V0ou25BA9L1lMCEjqykH41p3f2MZc2b02nMLJXnrw/pubhtml?gid=1337688492&single=true">
+        <button class="btn-block" onclick="startParseFlow()">解析 CSV 並建立新訂單</button>
+        <div id="loading" style="display:none; text-align:center; color:#666; margin-top:10px;">讀取中...</div>
+    </div>
+
+    <div class="container">
+        <div id="order-grid" class="order-grid">
+            <div style="text-align:center; color:#999; grid-column: 1/-1; padding: 50px;">
+                請點擊左上角選單，解析 CSV 或讀取資料
+            </div>
+        </div>
+    </div>
+
+    <div id="startup-modal" class="modal">
+        <div class="modal-content">
+            <h3>建立日訂單</h3>
+            <p style="font-size:0.9rem; color:#666;">CSV 解析完成。請選擇要套用的預設循環樣板 (週一~週五)，並設定日期。</p>
+            
+            <label>1. 選擇預設樣板</label>
+            <select id="template-select" style="width:100%; padding:10px; margin-bottom:15px; border-radius:8px;">
+                <option value="default">原始 CSV 預設值 (週一)</option>
+                <option value="default">週二預設值 (同上)</option>
+                <option value="default">週三預設值 (同上)</option>
+                <option value="default">週四預設值 (同上)</option>
+                <option value="default">週五預設值 (同上)</option>
+            </select>
+
+            <label>2. 訂單日期</label>
+            <input type="date" id="order-date">
+
+            <button class="btn-block" onclick="confirmOrderDate()">確認建立</button>
+            <button class="btn-block btn-outline" onclick="closeModal()">取消</button>
+        </div>
+    </div>
+
+<script type="module">
+    // Firebase references are attached to window in the top script block
+    // Main App Logic
+</script>
+
+<script>
+    // --- State Management ---
+    let state = {
+        orders: [], // Array of objects
+        currentDate: '',
+        harvestInput: 0,
+        tempCsvData: [] // Temporarily store parsed data before confirming date
+    };
+
+    // --- CSV Parsing Logic ---
+    async function startParseFlow() {
+        const urlInput = document.getElementById('csvUrl').value.trim();
+        const loading = document.getElementById('loading');
+        
+        if (!urlInput) return alert('請輸入網址');
+        
+        loading.style.display = 'block';
+        
+        try {
+            let fetchUrl = urlInput;
+            if (fetchUrl.includes('pubhtml')) {
+                fetchUrl = fetchUrl.replace('pubhtml', 'pub') + '&output=csv';
+            } else if (!fetchUrl.includes('output=csv')) {
+                fetchUrl += '&output=csv';
+            }
+
+            const response = await fetch(fetchUrl);
+            const text = await response.text();
+            
+            // Parse CSV
+            const rows = text.split('\n').filter(r => r.trim() !== '');
+            const parsed = [];
+            
+            // Assume Row 0 is header. Start from 1.
+            // Columns: 0:UUID, 1:Name, 2:Large, 3:GoldMid, 4:Mid, 5:Special(Ignore)
+            for (let i = 1; i < rows.length; i++) {
+                const cols = rows[i].split(',').map(c => c.trim());
+                if (cols.length < 2) continue;
+
+                parsed.push({
+                    uuid: cols[0] || generateUUID(),
+                    name: cols[1],
+                    large: parseInt(cols[2] || 0),
+                    goldMid: parseInt(cols[3] || 0),
+                    mid: parseInt(cols[4] || 0),
+                    status: 0, // 0:預計, 1:延期, 2:減量, 3:確認
+                    originalLarge: parseInt(cols[2] || 0) // Keep track for reset?
+                });
+            }
+
+            state.tempCsvData = parsed;
+            toggleSidebar(); // Close sidebar
+            
+            // Open Modal
+            document.getElementById('order-date').valueAsDate = new Date();
+            document.getElementById('startup-modal').classList.add('active');
+
+        } catch (e) {
+            alert('讀取失敗: ' + e.message);
+        } finally {
+            loading.style.display = 'none';
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('startup-modal').classList.remove('active');
+    }
+
+    function confirmOrderDate() {
+        const dateInput = document.getElementById('order-date').value;
+        if (!dateInput) return alert('請輸入日期');
+
+        state.currentDate = dateInput;
+        // Deep copy temp data to current orders
+        state.orders = JSON.parse(JSON.stringify(state.tempCsvData));
+        
+        closeModal();
+        renderOrders();
+        updateStats();
+        
+        // Update Display Date
+        document.getElementById('displayDate').textContent = state.currentDate;
+        
+        // Try to load existing data from Firebase for this date?
+        // For now, we overwrite based on user flow "Create New", but checking existence would be advanced.
+        alert(`已建立 ${dateInput} 的訂單，共 ${state.orders.length} 筆`);
+    }
+
+    // --- UI Rendering ---
+    function renderOrders() {
+        const grid = document.getElementById('order-grid');
+        grid.innerHTML = '';
+
+        state.orders.forEach((order, index) => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.dataset.status = order.status;
+            card.innerHTML = `
+                <div class="card-header">
+                    <span class="customer-name">${order.name}</span>
+                    <span class="uuid">#${order.uuid.slice(-4)}</span>
+                </div>
+                <div class="items-row">
+                    <div class="item-group">
+                        <span class="item-label">大 (950)</span>
+                        <span class="item-val" style="${order.large===0?'color:#ddd':''}">${order.large}</span>
+                    </div>
+                    <div class="item-group">
+                        <span class="item-label">金中 (500)</span>
+                        <span class="item-val" style="${order.goldMid===0?'color:#ddd':''}">${order.goldMid}</span>
+                    </div>
+                    <div class="item-group">
+                        <span class="item-label">中 (500)</span>
+                        <span class="item-val" style="${order.mid===0?'color:#ddd':''}">${order.mid}</span>
+                    </div>
+                </div>
+                <div class="status-container">
+                    <button class="status-btn ${order.status==0?'active':''}" onclick="updateStatus(${index}, 0)">預計</button>
+                    <button class="status-btn ${order.status==1?'active':''}" onclick="updateStatus(${index}, 1)">延期</button>
+                    <button class="status-btn ${order.status==2?'active':''}" onclick="triggerReduce(${index})">減量</button>
+                    <button class="status-btn ${order.status==3?'active':''}" onclick="updateStatus(${index}, 3)">確認</button>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    // --- Business Logic ---
+
+    // Update simple status
+    window.updateStatus = function(index, status) {
+        state.orders[index].status = status;
+        renderOrders(); // Re-render to update UI colors
+        calculateMilk(); // Recalc stats
+    }
+
+    // "Reduced" Logic: Large -> GoldMid
+    window.triggerReduce = function(index) {
+        const order = state.orders[index];
+        if (order.large > 0) {
+            const confirmReduce = confirm(`確定要將 ${order.name} 減量？\n(大瓶 ${order.large} 將轉為 金中)`);
+            if (confirmReduce) {
+                order.goldMid += order.large;
+                order.large = 0;
+                order.status = 2; // Set status to Reduced
+                renderOrders();
+                updateStats();
+            }
+        } else {
+            // Already 0 large, just change status tag
+            order.status = 2;
+            renderOrders();
+        }
+    }
+
+    // Stats Calculation
+    function updateStats() {
+        let l = 0, g = 0, m = 0;
+        state.orders.forEach(o => {
+            // Only count if not Delayed(1) ? Or count all? 
+            // Usually "Predicted", "Reduced", "Confirmed" count towards needed milk. "Delayed" might not.
+            // Let's assume only Delayed(1) orders are NOT prepared today.
+            if (o.status !== 1) {
+                l += o.large;
+                g += o.goldMid;
+                m += o.mid;
+            }
+        });
+
+        document.getElementById('sum-large').innerText = l;
+        document.getElementById('sum-gold').innerText = g;
+        document.getElementById('sum-mid').innerText = m;
+        document.getElementById('order-count').innerText = state.orders.length;
+        
+        calculateMilk(l, g, m);
+    }
+
+    window.calculateMilk = function(l, g, m) {
+        // If args not provided, fetch from DOM or State (simplified re-run)
+        if (l === undefined) {
+            l = parseInt(document.getElementById('sum-large').innerText);
+            g = parseInt(document.getElementById('sum-gold').innerText);
+            m = parseInt(document.getElementById('sum-mid').innerText);
+        }
+
+        // Logic: Large=950g, Others=500g
+        const totalGrams = (l * 950) + ((g + m) * 500);
+        const totalKg = (totalGrams / 1000).toFixed(1);
+
+        document.getElementById('milk-needed').innerText = totalKg;
+
+        // Compare with harvest
+        const harvest = parseFloat(document.getElementById('milk-harvest').value) || 0;
+        const diffSpan = document.getElementById('milk-diff');
+        
+        if (harvest > 0) {
+            const diff = (harvest - totalKg).toFixed(1);
+            if (diff >= 0) {
+                diffSpan.innerHTML = `<span style="color:var(--success)">+${diff}</span>`;
+            } else {
+                diffSpan.innerHTML = `<span style="color:var(--danger)">${diff}</span>`;
+            }
+        } else {
+            diffSpan.innerText = '';
+        }
+        
+        state.harvestInput = harvest;
+    }
+
+    // --- Firebase Operations ---
+    window.saveToFirebase = function() {
+        if (!state.currentDate || state.orders.length === 0) {
+            return alert("無資料可存檔");
+        }
+        
+        // Wait for Firebase to load (simple check)
+        if (!window.dbSet) return alert("Firebase 初始化中...");
+
+        const path = `orders/${state.currentDate}`;
+        const saveData = {
+            list: state.orders,
+            harvest: state.harvestInput,
+            updatedAt: new Date().toISOString()
+        };
+
+        window.dbSet(window.dbRef(window.db, path), saveData)
+            .then(() => alert("存檔成功！"))
+            .catch((e) => alert("存檔失敗: " + e));
+    }
+
+    // --- Utilities ---
+    window.toggleSidebar = function() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.querySelector('.sidebar-overlay').classList.toggle('active');
+    }
+
+    function generateUUID() {
+        return 'xxxx-xxxx'.replace(/[x]/g, (c) => {
+            return (Math.random() * 16 | 0).toString(16);
+        });
+    }
+
+</script>
+</body>
+</html>
