@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>羊奶訂單管理系統 CRM-Lite</title>
+    <title>GoatCRM v2.0 - Dispatch & Inventory</title>
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyB6D9vh6J2mdnjz2VXEVe99oi7oLF-irFo",
@@ -19,598 +19,488 @@
             appId: "1:925760221722:web:1aeda0b82f1f16b8dcd7a3"
         };
 
-        // 初始化 Firebase
         const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        window.db = db; // 掛載到 window 以便主邏輯存取
+        window.db = getDatabase(app);
         window.dbRef = ref;
         window.dbSet = set;
-        window.dbGet = get;
-        window.dbChild = child;
+        window.dbOnValue = onValue;
     </script>
 
     <style>
         :root {
-            --primary: #007AFF; /* iOS Blue */
+            --primary: #007AFF;
             --success: #34C759;
             --warning: #FF9500;
             --danger: #FF3B30;
+            --gray: #8E8E93;
             --bg: #F2F2F7;
             --card-bg: #FFFFFF;
-            --text-main: #1C1C1E;
-            --text-sub: #8E8E93;
-            --border: #C6C6C8;
-            --radius: 12px;
-            --spacing: 8px;
+            --text: #1C1C1E;
+            --border-radius: 8px;
+            --header-height: 140px; 
         }
 
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
         
         body {
+            margin: 0;
+            padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--bg);
-            color: var(--text-main);
-            margin: 0;
-            padding-top: 110px; /* 保留 Header 空間 */
-            font-size: 14px; /* 高密度字體 */
+            color: var(--text);
+            padding-top: var(--header-height); /* Space for Sticky Header */
+            font-size: 13px; /* High density font */
         }
 
-        /* --- Header & Navbar --- */
+        /* --- Sticky Control Tower (Header) --- */
         header {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
-            z-index: 100;
-            border-bottom: 1px solid var(--border);
-            padding: var(--spacing);
-            box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+            top: 0; left: 0; right: 0;
+            background: rgba(255, 255, 255, 0.98);
+            border-bottom: 1px solid #c6c6c8;
+            z-index: 1000;
+            padding: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
 
-        .nav-top {
+        .top-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
         }
 
-        .nav-stats {
-            display: flex;
-            gap: 10px;
-            font-size: 0.85rem;
-            overflow-x: auto;
-            white-space: nowrap;
-            padding-bottom: 2px;
-        }
+        .menu-btn { font-size: 1.5rem; background: none; border: none; cursor: pointer; padding: 0 5px; }
+        .app-title { font-weight: 700; font-size: 1rem; }
+        .date-display { font-size: 0.8rem; color: var(--gray); background: #eee; padding: 2px 6px; border-radius: 4px; }
 
-        .stat-badge {
-            background: #E5E5EA;
-            padding: 2px 8px;
-            border-radius: 6px;
-            font-weight: 600;
-        }
-        
-        .stat-badge span { color: var(--primary); }
-
-        .milk-calc-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: #eef9ff;
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 0.9rem;
-            justify-content: space-between;
-        }
-
-        .milk-input {
-            width: 70px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 2px 5px;
-            text-align: right;
-        }
-
-        /* --- Hamburger / Sidebar --- */
-        .menu-btn {
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0 5px;
-        }
-
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: -280px;
-            width: 280px;
-            height: 100vh;
-            background: var(--card-bg);
-            z-index: 200;
-            transition: 0.3s ease;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-            padding: 20px;
-            overflow-y: auto;
-        }
-
-        .sidebar.open { left: 0; }
-        .sidebar-overlay {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.3);
-            z-index: 150;
-            display: none;
-        }
-        .sidebar-overlay.active { display: block; }
-
-        /* --- Main Content --- */
-        .container {
-            padding: var(--spacing);
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        /* Grid Layout: Mobile 1 col, Desktop 3 cols */
-        .order-grid {
+        /* Inventory Grid (3x4 Matrix) */
+        .inventory-table {
             display: grid;
-            grid-template-columns: 1fr;
-            gap: 8px;
-        }
-
-        @media (min-width: 768px) {
-            .order-grid {
-                grid-template-columns: repeat(3, 1fr);
-            }
-        }
-
-        /* --- Order Card (High Density) --- */
-        .card {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 10px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            border-left: 4px solid var(--primary); /* Default status color */
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-        }
-
-        .customer-name { font-weight: 700; font-size: 1.1rem; }
-        .uuid { font-family: monospace; color: var(--text-sub); font-size: 0.75rem; }
-
-        .items-row {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-        }
-
-        .item-group {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .item-label { font-size: 0.7rem; color: var(--text-sub); }
-        .item-val { font-weight: 700; font-size: 1.1rem; }
-
-        /* --- Progress Bar / Status --- */
-        .status-container {
-            display: flex;
-            justify-content: space-between;
-            background: #F2F2F7;
+            grid-template-columns: 0.8fr 1fr 1fr 1fr;
+            gap: 2px;
+            font-size: 0.75rem;
+            text-align: center;
+            background: #e5e5ea;
             border-radius: 6px;
             padding: 2px;
-            margin-top: 5px;
         }
 
-        .status-btn {
-            flex: 1;
-            border: none;
-            background: none;
-            font-size: 0.7rem;
-            padding: 4px 0;
-            border-radius: 4px;
-            color: var(--text-sub);
-            cursor: pointer;
-            transition: 0.2s;
-        }
-
-        .status-btn.active {
-            background: white;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-            font-weight: bold;
-        }
-
-        /* Status Colors Logic */
-        .card[data-status="0"] { border-left-color: var(--primary); } /* 預計 */
-        .card[data-status="0"] .status-btn:nth-child(1) { color: var(--primary); font-weight: bold; }
+        .inv-cell { background: #fff; padding: 4px 0; display: flex; align-items: center; justify-content: center; }
+        .inv-head { font-weight: bold; background: #f2f2f7; color: var(--gray); }
+        .inv-input { width: 100%; border: none; text-align: center; font-weight: bold; font-size: 0.9rem; color: var(--primary); outline: none; background: transparent; }
         
-        .card[data-status="1"] { border-left-color: var(--warning); } /* 延期 */
-        .card[data-status="1"] .status-btn:nth-child(2) { color: var(--warning); font-weight: bold; }
+        /* Traffic Light Logic */
+        .inv-balance[data-val="pos"] { background-color: #d4f8d4; color: #006400; font-weight: bold; }
+        .inv-balance[data-val="neg"] { background-color: #ffd4d4; color: #8b0000; font-weight: bold; }
+        .inv-balance[data-val="zero"] { background-color: #fff; color: #ccc; }
 
-        .card[data-status="2"] { border-left-color: var(--text-sub); opacity: 0.9; } /* 減量 */
-        .card[data-status="2"] .status-btn:nth-child(3) { color: var(--text-main); font-weight: bold; }
+        /* --- Main Content (High Density Grid) --- */
+        .container { padding: 8px; }
+        
+        .card-grid {
+            display: grid;
+            /* 關鍵：嘗試並列顯示，每欄最小寬度 165px，適合 iPhone 15 寬度 (393px) */
+            grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+            gap: 8px;
+        }
 
-        .card[data-status="3"] { border-left-color: var(--success); background: #fafffb; } /* 確認 */
-        .card[data-status="3"] .status-btn:nth-child(4) { color: var(--success); font-weight: bold; }
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 8px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            position: relative;
+            transition: all 0.2s;
+            border-left: 4px solid transparent; /* Priority Indicator */
+        }
+
+        /* Priority Colors */
+        .card[data-priority="A"] { border-left-color: var(--danger); }
+        .card[data-priority="B"] { border-left-color: var(--primary); }
+        .card[data-priority="C"] { border-left-color: var(--gray); }
+
+        /* Status Styles */
+        .card.status-delayed { opacity: 0.6; background: #f9f9f9; }
+        .card.status-delayed .card-name { text-decoration: line-through; }
+        .card.status-reduced { background: #fffbea; border: 1px solid var(--warning); }
+        .card.status-confirmed { background: #f0fff4; border: 1px solid var(--success); }
+
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; }
+        .card-uuid { font-family: monospace; font-size: 0.65rem; color: var(--gray); background: #eee; padding: 1px 3px; border-radius: 3px; }
+        .card-priority { font-size: 0.65rem; font-weight: bold; }
+        .card-name { font-weight: 800; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
+
+        .card-body { display: flex; justify-content: space-around; margin-bottom: 8px; font-size: 0.9rem; }
+        .spec-item { display: flex; flex-direction: column; align-items: center; }
+        .spec-label { font-size: 0.6rem; color: var(--gray); }
+        .spec-val { font-weight: 700; }
+        .spec-val.changed { color: var(--warning); }
+
+        .card-actions { display: flex; gap: 2px; }
+        .action-btn {
+            flex: 1; border: none; padding: 4px 0; border-radius: 4px; font-size: 0.7rem; cursor: pointer; color: #fff;
+        }
+        .btn-delay { background-color: var(--gray); }
+        .btn-reduce { background-color: var(--warning); color: #000; }
+        .btn-confirm { background-color: var(--success); }
+        .btn-reset { background-color: #eee; color: #333; }
+
+        /* --- Sidebar (Hamburger) --- */
+        .sidebar {
+            position: fixed; top: 0; left: -260px; width: 260px; height: 100%;
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(10px);
+            z-index: 2000; transition: 0.3s ease;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            padding: 20px; display: flex; flex-direction: column; gap: 15px;
+        }
+        .sidebar.active { left: 0; }
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.3); z-index: 1500; display: none;
+        }
+        .overlay.active { display: block; }
+        
+        .sidebar-btn {
+            width: 100%; padding: 12px; border: 1px solid #ddd; background: #fff;
+            border-radius: 8px; text-align: left; font-size: 0.9rem; cursor: pointer;
+        }
+        .sidebar-btn:active { background: #f0f0f0; }
+        .sidebar-btn.primary { background: var(--primary); color: #fff; border: none; text-align: center; }
 
         /* --- Modal --- */
         .modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 300;
-            align-items: center;
-            justify-content: center;
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 3000; justify-content: center; align-items: center;
         }
         .modal.active { display: flex; }
         .modal-content {
-            background: white;
-            padding: 20px;
-            border-radius: 16px;
-            width: 90%;
-            max-width: 400px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            background: #fff; padding: 20px; border-radius: 12px; width: 85%; max-width: 320px;
         }
-        .modal h3 { margin-top: 0; }
-        .btn-block {
-            width: 100%;
-            padding: 12px;
-            margin-top: 10px;
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            cursor: pointer;
-        }
-        .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
-
-        /* Helpers */
-        .hidden { display: none; }
-        input[type="date"] { padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 100%; font-size: 1rem; margin-bottom: 10px; }
-        
-        /* 產品表格樣式 */
-        .product-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 10px; }
-        .product-table th, .product-table td { border: 1px solid #eee; padding: 5px; text-align: left; }
+        textarea { width: 100%; height: 60px; margin: 10px 0; padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
     </style>
 </head>
 <body>
 
+    <div class="overlay" onclick="toggleSidebar()"></div>
+    <div class="sidebar" id="sidebar">
+        <h3 style="margin:0;">GoatCRM 選單</h3>
+        <hr style="width:100%; border:0; border-top:1px solid #eee;">
+        
+        <label style="font-size:0.8rem; color:var(--gray);">資料來源</label>
+        <input type="text" id="csvUrl" value="https://docs.google.com/spreadsheets/d/e/2PACX-1vQF9dZUNtfJjbPIf4_3wvrJoVIv7WxGrXKEit9V0ou25BA9L1lMCEjqykH41p3f2MZc2b02nMLJXnrw/pubhtml?gid=1337688492&single=true" style="width:100%; padding:5px; font-size:0.7rem;">
+        <button class="sidebar-btn primary" onclick="parseCSV()">🔄 解析 CSV (建立今日訂單)</button>
+        
+        <label style="font-size:0.8rem; color:var(--gray);">日期切換</label>
+        <input type="date" id="datePicker" class="sidebar-btn" onchange="changeDate(this.value)">
+
+        <label style="font-size:0.8rem; color:var(--gray);">系統操作</label>
+        <button class="sidebar-btn" onclick="saveToFirebase()">☁️ 雲端存檔 (Firebase)</button>
+        <button class="sidebar-btn" onclick="toggleDemoData()">🧪 載入 Demo 資料 (王/李)</button>
+    </div>
+
     <header>
-        <div class="nav-top">
+        <div class="top-bar">
             <button class="menu-btn" onclick="toggleSidebar()">☰</button>
-            <div style="font-weight:bold; font-size: 1.1rem;">訂單看板 <span id="displayDate" style="font-size:0.8rem; color:#666;"></span></div>
-            <button class="btn-outline" style="padding:4px 8px; font-size:0.8rem;" onclick="saveToFirebase()">雲端存檔</button>
+            <span class="app-title">配送調度中心</span>
+            <span class="date-display" id="currentDateDisplay">2026-02-02</span>
         </div>
 
-        <div class="nav-stats">
-            <div class="stat-badge">大: <span id="sum-large">0</span></div>
-            <div class="stat-badge">金中: <span id="sum-gold">0</span></div>
-            <div class="stat-badge">中: <span id="sum-mid">0</span></div>
-            <div class="stat-badge">訂單數: <span id="order-count">0</span></div>
-        </div>
+        <div class="inventory-table">
+            <div class="inv-cell inv-head">規格</div>
+            <div class="inv-cell inv-head">實收 (Supply)</div>
+            <div class="inv-cell inv-head">需配 (Demand)</div>
+            <div class="inv-cell inv-head">餘額 (Bal)</div>
 
-        <div class="milk-calc-row">
-            <div>
-                預估需求: <span id="milk-needed" style="font-weight:bold;">0</span> kg
-            </div>
-            <div style="display:flex; align-items:center; gap:5px;">
-                <label>實際產量:</label>
-                <input type="number" id="milk-harvest" class="milk-input" placeholder="kg" oninput="calculateMilk()">
-                <span id="milk-diff" style="font-size:0.8rem;"></span>
-            </div>
+            <div class="inv-cell">大 (L)</div>
+            <div class="inv-cell"><input type="number" id="in-supply-l" class="inv-input" value="0" oninput="calcStats()"></div>
+            <div class="inv-cell" id="in-demand-l">0</div>
+            <div class="inv-cell inv-balance" id="in-bal-l" data-val="zero">0</div>
+
+            <div class="inv-cell">金 (G)</div>
+            <div class="inv-cell"><input type="number" id="in-supply-g" class="inv-input" value="0" oninput="calcStats()"></div>
+            <div class="inv-cell" id="in-demand-g">0</div>
+            <div class="inv-cell inv-balance" id="in-bal-g" data-val="zero">0</div>
+
+            <div class="inv-cell">中 (M)</div>
+            <div class="inv-cell"><input type="number" id="in-supply-m" class="inv-input" value="0" oninput="calcStats()"></div>
+            <div class="inv-cell" id="in-demand-m">0</div>
+            <div class="inv-cell inv-balance" id="in-bal-m" data-val="zero">0</div>
         </div>
     </header>
 
-    <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
-    <div class="sidebar" id="sidebar">
-        <h3>產品資料表</h3>
-        <p style="font-size:0.8rem; color:#666;">用於分析CSV對應內容 (唯讀)</p>
-        <table class="product-table">
-            <thead><tr><th>品項</th><th>代號</th><th>規格</th></tr></thead>
-            <tbody>
-                <tr><td>大瓶羊奶</td><td>Large</td><td>950g</td></tr>
-                <tr><td>金中羊奶</td><td>GoldMid</td><td>500g</td></tr>
-                <tr><td>中瓶羊奶</td><td>Mid</td><td>500g</td></tr>
-                <tr><td>特製</td><td>Special</td><td>N/A</td></tr>
-            </tbody>
-        </table>
-        
-        <hr>
-        <h3>資料來源</h3>
-        <input type="text" id="csvUrl" style="width:100%; padding:8px; font-size:0.8rem; margin-bottom:10px;" 
-               value="https://docs.google.com/spreadsheets/d/e/2PACX-1vQF9dZUNtfJjbPIf4_3wvrJoVIv7WxGrXKEit9V0ou25BA9L1lMCEjqykH41p3f2MZc2b02nMLJXnrw/pubhtml?gid=1337688492&single=true">
-        <button class="btn-block" onclick="startParseFlow()">解析 CSV 並建立新訂單</button>
-        <div id="loading" style="display:none; text-align:center; color:#666; margin-top:10px;">讀取中...</div>
-    </div>
-
     <div class="container">
-        <div id="order-grid" class="order-grid">
-            <div style="text-align:center; color:#999; grid-column: 1/-1; padding: 50px;">
-                請點擊左上角選單，解析 CSV 或讀取資料
+        <div id="card-container" class="card-grid">
+            <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #999;">
+                請點選選單載入資料<br>或按「載入 Demo」測試
             </div>
         </div>
     </div>
 
-    <div id="startup-modal" class="modal">
+    <div id="edit-modal" class="modal" onclick="if(event.target===this) closeModal()">
         <div class="modal-content">
-            <h3>建立日訂單</h3>
-            <p style="font-size:0.9rem; color:#666;">CSV 解析完成。請選擇要套用的預設循環樣板 (週一~週五)，並設定日期。</p>
-            
-            <label>1. 選擇預設樣板</label>
-            <select id="template-select" style="width:100%; padding:10px; margin-bottom:15px; border-radius:8px;">
-                <option value="default">原始 CSV 預設值 (週一)</option>
-                <option value="default">週二預設值 (同上)</option>
-                <option value="default">週三預設值 (同上)</option>
-                <option value="default">週四預設值 (同上)</option>
-                <option value="default">週五預設值 (同上)</option>
-            </select>
-
-            <label>2. 訂單日期</label>
-            <input type="date" id="order-date">
-
-            <button class="btn-block" onclick="confirmOrderDate()">確認建立</button>
-            <button class="btn-block btn-outline" onclick="closeModal()">取消</button>
+            <h3>訂單備註</h3>
+            <p id="modal-title" style="color:#666; font-size:0.9rem;"></p>
+            <textarea id="modal-note" placeholder="輸入備註 (例如: 放管理室)"></textarea>
+            <button class="sidebar-btn primary" onclick="saveNote()">儲存備註</button>
+            <button class="sidebar-btn" style="margin-top:5px; color:red;" onclick="rescheduleOrder()">📅 移至明日配送</button>
         </div>
     </div>
 
-<script type="module">
-    // Firebase references are attached to window in the top script block
-    // Main App Logic
-</script>
-
-<script>
-    // --- State Management ---
-    let state = {
-        orders: [], // Array of objects
-        currentDate: '',
-        harvestInput: 0,
-        tempCsvData: [] // Temporarily store parsed data before confirming date
-    };
-
-    // --- CSV Parsing Logic ---
-    async function startParseFlow() {
-        const urlInput = document.getElementById('csvUrl').value.trim();
-        const loading = document.getElementById('loading');
-        
-        if (!urlInput) return alert('請輸入網址');
-        
-        loading.style.display = 'block';
-        
-        try {
-            let fetchUrl = urlInput;
-            if (fetchUrl.includes('pubhtml')) {
-                fetchUrl = fetchUrl.replace('pubhtml', 'pub') + '&output=csv';
-            } else if (!fetchUrl.includes('output=csv')) {
-                fetchUrl += '&output=csv';
-            }
-
-            const response = await fetch(fetchUrl);
-            const text = await response.text();
-            
-            // Parse CSV
-            const rows = text.split('\n').filter(r => r.trim() !== '');
-            const parsed = [];
-            
-            // Assume Row 0 is header. Start from 1.
-            // Columns: 0:UUID, 1:Name, 2:Large, 3:GoldMid, 4:Mid, 5:Special(Ignore)
-            for (let i = 1; i < rows.length; i++) {
-                const cols = rows[i].split(',').map(c => c.trim());
-                if (cols.length < 2) continue;
-
-                parsed.push({
-                    uuid: cols[0] || generateUUID(),
-                    name: cols[1],
-                    large: parseInt(cols[2] || 0),
-                    goldMid: parseInt(cols[3] || 0),
-                    mid: parseInt(cols[4] || 0),
-                    status: 0, // 0:預計, 1:延期, 2:減量, 3:確認
-                    originalLarge: parseInt(cols[2] || 0) // Keep track for reset?
-                });
-            }
-
-            state.tempCsvData = parsed;
-            toggleSidebar(); // Close sidebar
-            
-            // Open Modal
-            document.getElementById('order-date').valueAsDate = new Date();
-            document.getElementById('startup-modal').classList.add('active');
-
-        } catch (e) {
-            alert('讀取失敗: ' + e.message);
-        } finally {
-            loading.style.display = 'none';
-        }
-    }
-
-    function closeModal() {
-        document.getElementById('startup-modal').classList.remove('active');
-    }
-
-    function confirmOrderDate() {
-        const dateInput = document.getElementById('order-date').value;
-        if (!dateInput) return alert('請輸入日期');
-
-        state.currentDate = dateInput;
-        // Deep copy temp data to current orders
-        state.orders = JSON.parse(JSON.stringify(state.tempCsvData));
-        
-        closeModal();
-        renderOrders();
-        updateStats();
-        
-        // Update Display Date
-        document.getElementById('displayDate').textContent = state.currentDate;
-        
-        // Try to load existing data from Firebase for this date?
-        // For now, we overwrite based on user flow "Create New", but checking existence would be advanced.
-        alert(`已建立 ${dateInput} 的訂單，共 ${state.orders.length} 筆`);
-    }
-
-    // --- UI Rendering ---
-    function renderOrders() {
-        const grid = document.getElementById('order-grid');
-        grid.innerHTML = '';
-
-        state.orders.forEach((order, index) => {
-            const card = document.createElement('div');
-            card.className = 'card';
-            card.dataset.status = order.status;
-            card.innerHTML = `
-                <div class="card-header">
-                    <span class="customer-name">${order.name}</span>
-                    <span class="uuid">#${order.uuid.slice(-4)}</span>
-                </div>
-                <div class="items-row">
-                    <div class="item-group">
-                        <span class="item-label">大 (950)</span>
-                        <span class="item-val" style="${order.large===0?'color:#ddd':''}">${order.large}</span>
-                    </div>
-                    <div class="item-group">
-                        <span class="item-label">金中 (500)</span>
-                        <span class="item-val" style="${order.goldMid===0?'color:#ddd':''}">${order.goldMid}</span>
-                    </div>
-                    <div class="item-group">
-                        <span class="item-label">中 (500)</span>
-                        <span class="item-val" style="${order.mid===0?'color:#ddd':''}">${order.mid}</span>
-                    </div>
-                </div>
-                <div class="status-container">
-                    <button class="status-btn ${order.status==0?'active':''}" onclick="updateStatus(${index}, 0)">預計</button>
-                    <button class="status-btn ${order.status==1?'active':''}" onclick="updateStatus(${index}, 1)">延期</button>
-                    <button class="status-btn ${order.status==2?'active':''}" onclick="triggerReduce(${index})">減量</button>
-                    <button class="status-btn ${order.status==3?'active':''}" onclick="updateStatus(${index}, 3)">確認</button>
-                </div>
-            `;
-            grid.appendChild(card);
-        });
-    }
-
-    // --- Business Logic ---
-
-    // Update simple status
-    window.updateStatus = function(index, status) {
-        state.orders[index].status = status;
-        renderOrders(); // Re-render to update UI colors
-        calculateMilk(); // Recalc stats
-    }
-
-    // "Reduced" Logic: Large -> GoldMid
-    window.triggerReduce = function(index) {
-        const order = state.orders[index];
-        if (order.large > 0) {
-            const confirmReduce = confirm(`確定要將 ${order.name} 減量？\n(大瓶 ${order.large} 將轉為 金中)`);
-            if (confirmReduce) {
-                order.goldMid += order.large;
-                order.large = 0;
-                order.status = 2; // Set status to Reduced
-                renderOrders();
-                updateStats();
-            }
-        } else {
-            // Already 0 large, just change status tag
-            order.status = 2;
-            renderOrders();
-        }
-    }
-
-    // Stats Calculation
-    function updateStats() {
-        let l = 0, g = 0, m = 0;
-        state.orders.forEach(o => {
-            // Only count if not Delayed(1) ? Or count all? 
-            // Usually "Predicted", "Reduced", "Confirmed" count towards needed milk. "Delayed" might not.
-            // Let's assume only Delayed(1) orders are NOT prepared today.
-            if (o.status !== 1) {
-                l += o.large;
-                g += o.goldMid;
-                m += o.mid;
-            }
-        });
-
-        document.getElementById('sum-large').innerText = l;
-        document.getElementById('sum-gold').innerText = g;
-        document.getElementById('sum-mid').innerText = m;
-        document.getElementById('order-count').innerText = state.orders.length;
-        
-        calculateMilk(l, g, m);
-    }
-
-    window.calculateMilk = function(l, g, m) {
-        // If args not provided, fetch from DOM or State (simplified re-run)
-        if (l === undefined) {
-            l = parseInt(document.getElementById('sum-large').innerText);
-            g = parseInt(document.getElementById('sum-gold').innerText);
-            m = parseInt(document.getElementById('sum-mid').innerText);
-        }
-
-        // Logic: Large=950g, Others=500g
-        const totalGrams = (l * 950) + ((g + m) * 500);
-        const totalKg = (totalGrams / 1000).toFixed(1);
-
-        document.getElementById('milk-needed').innerText = totalKg;
-
-        // Compare with harvest
-        const harvest = parseFloat(document.getElementById('milk-harvest').value) || 0;
-        const diffSpan = document.getElementById('milk-diff');
-        
-        if (harvest > 0) {
-            const diff = (harvest - totalKg).toFixed(1);
-            if (diff >= 0) {
-                diffSpan.innerHTML = `<span style="color:var(--success)">+${diff}</span>`;
-            } else {
-                diffSpan.innerHTML = `<span style="color:var(--danger)">${diff}</span>`;
-            }
-        } else {
-            diffSpan.innerText = '';
-        }
-        
-        state.harvestInput = harvest;
-    }
-
-    // --- Firebase Operations ---
-    window.saveToFirebase = function() {
-        if (!state.currentDate || state.orders.length === 0) {
-            return alert("無資料可存檔");
-        }
-        
-        // Wait for Firebase to load (simple check)
-        if (!window.dbSet) return alert("Firebase 初始化中...");
-
-        const path = `orders/${state.currentDate}`;
-        const saveData = {
-            list: state.orders,
-            harvest: state.harvestInput,
-            updatedAt: new Date().toISOString()
+    <script>
+        // --- State Management ---
+        const state = {
+            orders: [], // { uuid, name, L, G, M, status, priority, note, originalL, originalG, originalM }
+            date: new Date().toISOString().split('T')[0],
+            supply: { L:0, G:0, M:0 }
         };
 
-        window.dbSet(window.dbRef(window.db, path), saveData)
-            .then(() => alert("存檔成功！"))
-            .catch((e) => alert("存檔失敗: " + e));
-    }
+        // Initialize
+        document.getElementById('currentDateDisplay').textContent = state.date;
+        document.getElementById('datePicker').value = state.date;
 
-    // --- Utilities ---
-    window.toggleSidebar = function() {
-        document.getElementById('sidebar').classList.toggle('open');
-        document.querySelector('.sidebar-overlay').classList.toggle('active');
-    }
+        // --- Core Functions ---
 
-    function generateUUID() {
-        return 'xxxx-xxxx'.replace(/[x]/g, (c) => {
-            return (Math.random() * 16 | 0).toString(16);
-        });
-    }
+        // 1. Render Logic
+        function render() {
+            const container = document.getElementById('card-container');
+            container.innerHTML = '';
 
-</script>
+            // Sort: Priority (Pending > Reduced > Delayed > Confirmed) -> Grade (A>B>C)
+            const sortedOrders = [...state.orders].sort((a, b) => {
+                const statusOrder = { 'pending': 0, 'reduced': 1, 'confirmed': 2, 'delayed': 3 };
+                const gradeOrder = { 'A': 0, 'B': 1, 'C': 2 };
+                
+                if (statusOrder[a.status] !== statusOrder[b.status]) 
+                    return statusOrder[a.status] - statusOrder[b.status];
+                return gradeOrder[a.priority] - gradeOrder[b.priority];
+            });
+
+            sortedOrders.forEach((order) => {
+                const el = document.createElement('div');
+                el.className = `card status-${order.status}`;
+                el.dataset.priority = order.priority;
+                
+                // Long press event (simulated with contextmenu for desktop & touch logic)
+                el.oncontextmenu = (e) => { e.preventDefault(); openModal(order.uuid); };
+                
+                // HTML Template
+                el.innerHTML = `
+                    <div class="card-header" onclick="openModal('${order.uuid}')">
+                        <span class="card-priority" style="color:${getPriorityColor(order.priority)}">● ${order.priority}級</span>
+                        <span class="card-uuid">#${order.uuid.slice(-4)}</span>
+                    </div>
+                    <div class="card-name" onclick="openModal('${order.uuid}')">${order.name}</div>
+                    
+                    <div class="card-body">
+                        <div class="spec-item">
+                            <span class="spec-label">大</span>
+                            <span class="spec-val ${order.L !== order.originalL ? 'changed' : ''}">${order.L}</span>
+                        </div>
+                        <div class="spec-item">
+                            <span class="spec-label">金</span>
+                            <span class="spec-val ${order.G !== order.originalG ? 'changed' : ''}">${order.G}</span>
+                        </div>
+                        <div class="spec-item">
+                            <span class="spec-label">中</span>
+                            <span class="spec-val">${order.M}</span>
+                        </div>
+                    </div>
+
+                    <div class="card-actions">
+                        ${order.status === 'pending' || order.status === 'reduced' ? `
+                            <button class="action-btn btn-reduce" onclick="setStatus('${order.uuid}', 'reduced')">減量</button>
+                            <button class="action-btn btn-delay" onclick="setStatus('${order.uuid}', 'delayed')">延期</button>
+                            <button class="action-btn btn-confirm" onclick="setStatus('${order.uuid}', 'confirmed')">確認</button>
+                        ` : `
+                            <button class="action-btn btn-reset" onclick="setStatus('${order.uuid}', 'pending')">重置</button>
+                        `}
+                    </div>
+                    ${order.note ? `<div style="font-size:0.7rem; color:blue; margin-top:4px;">📝 ${order.note}</div>` : ''}
+                `;
+                container.appendChild(el);
+            });
+
+            calcStats();
+        }
+
+        // 2. Status & Reduction Logic
+        window.setStatus = function(uuid, newStatus) {
+            const order = state.orders.find(o => o.uuid === uuid);
+            if (!order) return;
+
+            // Reduction Logic: Large -> GoldMid
+            if (newStatus === 'reduced' && order.status !== 'reduced') {
+                if (order.L > 0) {
+                    // Logic: All Large become GoldMid
+                    order.G += order.L;
+                    order.L = 0;
+                } else {
+                    alert('無大瓶可減量');
+                    return;
+                }
+            }
+            
+            // Reset Logic (Undo)
+            if (newStatus === 'pending') {
+                order.L = order.originalL;
+                order.G = order.originalG;
+                order.M = order.originalM;
+            }
+
+            order.status = newStatus;
+            render();
+        }
+
+        // 3. Stats Calculation (Traffic Light)
+        window.calcStats = function() {
+            // Update State from Inputs
+            state.supply.L = parseInt(document.getElementById('in-supply-l').value) || 0;
+            state.supply.G = parseInt(document.getElementById('in-supply-g').value) || 0;
+            state.supply.M = parseInt(document.getElementById('in-supply-m').value) || 0;
+
+            let demand = { L:0, G:0, M:0 };
+
+            state.orders.forEach(o => {
+                // Delayed orders do NOT count towards demand
+                if (o.status !== 'delayed') {
+                    demand.L += o.L;
+                    demand.G += o.G;
+                    demand.M += o.M;
+                }
+            });
+
+            // Update UI Demand
+            document.getElementById('in-demand-l').innerText = demand.L;
+            document.getElementById('in-demand-g').innerText = demand.G;
+            document.getElementById('in-demand-m').innerText = demand.M;
+
+            // Update Balance & Colors
+            updateBalanceCell('in-bal-l', state.supply.L - demand.L);
+            updateBalanceCell('in-bal-g', state.supply.G - demand.G);
+            updateBalanceCell('in-bal-m', state.supply.M - demand.M);
+        }
+
+        function updateBalanceCell(id, val) {
+            const el = document.getElementById(id);
+            el.innerText = (val > 0 ? '+' : '') + val;
+            if (val >= 0) el.setAttribute('data-val', 'pos');
+            else el.setAttribute('data-val', 'neg');
+        }
+
+        // --- Demo & Data Parsing ---
+
+        window.toggleDemoData = function() {
+            // Simulate the Wang (VIP) vs Lee (Normal) scenario
+            state.orders = [
+                { uuid: 'a1b2-c3d4', name: '王小明 (VIP)', L: 2, G: 0, M: 0, originalL: 2, originalG: 0, originalM: 0, status: 'pending', priority: 'A', note: '' },
+                { uuid: 'x9y8-z7w6', name: '李大華', L: 1, G: 0, M: 0, originalL: 1, originalG: 0, originalM: 0, status: 'pending', priority: 'C', note: '' },
+                { uuid: 'j5k6-l7m8', name: '陳美麗', L: 0, G: 2, M: 1, originalL: 0, originalG: 2, originalM: 1, status: 'pending', priority: 'B', note: '' }
+            ];
+            // Simulate Supply shortage
+            document.getElementById('in-supply-l').value = 2; // Only 2 Large available, need 3
+            document.getElementById('in-supply-g').value = 10;
+            
+            toggleSidebar();
+            render();
+            alert('Demo 資料已載入：\n大瓶庫存 2，需求 3。\n請嘗試將 C 級客戶「減量」以平衡庫存。');
+        }
+
+        window.parseCSV = async function() {
+            const url = document.getElementById('csvUrl').value;
+            let fetchUrl = url;
+            if (url.includes('pubhtml')) fetchUrl = url.replace('pubhtml', 'pub') + '&output=csv';
+            
+            try {
+                const res = await fetch(fetchUrl);
+                const text = await res.text();
+                const rows = text.split('\n').slice(1); // Skip header
+                
+                state.orders = rows.map(row => {
+                    const c = row.split(',');
+                    if(c.length < 2) return null;
+                    const L = parseInt(c[2])||0;
+                    const G = parseInt(c[3])||0;
+                    const M = parseInt(c[4])||0;
+                    
+                    // Priority Sim logic: Randomly assign A/B/C for demo
+                    const priorities = ['A', 'B', 'C'];
+                    const pri = priorities[Math.floor(Math.random() * priorities.length)];
+
+                    return {
+                        uuid: c[0] || Math.random().toString(36).substr(2, 9),
+                        name: c[1],
+                        L: L, G: G, M: M,
+                        originalL: L, originalG: G, originalM: M,
+                        status: 'pending',
+                        priority: pri,
+                        note: ''
+                    };
+                }).filter(x => x);
+
+                toggleSidebar();
+                render();
+            } catch(e) {
+                alert('讀取失敗');
+            }
+        }
+
+        // --- Helper Functions ---
+        window.toggleSidebar = () => {
+            document.getElementById('sidebar').classList.toggle('active');
+            document.querySelector('.overlay').classList.toggle('active');
+        }
+
+        function getPriorityColor(p) {
+            if(p==='A') return 'var(--danger)';
+            if(p==='B') return 'var(--primary)';
+            return 'var(--gray)';
+        }
+
+        // --- Modal Logic ---
+        let currentEditingUUID = null;
+        window.openModal = (uuid) => {
+            currentEditingUUID = uuid;
+            const order = state.orders.find(o => o.uuid === uuid);
+            document.getElementById('modal-title').innerText = `${order.name} (#${uuid.slice(-4)})`;
+            document.getElementById('modal-note').value = order.note || '';
+            document.getElementById('edit-modal').classList.add('active');
+        }
+        window.closeModal = () => document.getElementById('edit-modal').classList.remove('active');
+        
+        window.saveNote = () => {
+            const order = state.orders.find(o => o.uuid === currentEditingUUID);
+            if(order) order.note = document.getElementById('modal-note').value;
+            closeModal();
+            render();
+        }
+
+        window.rescheduleOrder = () => {
+            // Move to tomorrow (Simulated: just remove from list and log)
+            if(confirm('確定要將此訂單移至明天？')) {
+                state.orders = state.orders.filter(o => o.uuid !== currentEditingUUID);
+                closeModal();
+                render();
+                alert('訂單已移至明日排程 (Firebase 寫入邏輯預留)');
+            }
+        }
+
+        // --- Firebase (Placeholder for actual implementation) ---
+        window.saveToFirebase = () => {
+            if(window.dbSet) {
+                const path = `orders/${state.date}`;
+                window.dbSet(window.dbRef(window.db, path), {
+                    orders: state.orders,
+                    supply: state.supply,
+                    updatedAt: new Date().toISOString()
+                }).then(() => alert('雲端存檔成功！')).catch(e => alert(e));
+            } else {
+                alert('Firebase 初始化中...');
+            }
+        }
+
+        // --- Init ---
+        // Load Empty
+    </script>
 </body>
 </html>
